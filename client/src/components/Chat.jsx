@@ -21,7 +21,13 @@ function Chat({ user }) {
 
     websocket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      setMessages((prev) => [...prev, data]);
+      if (data.type === "history") {
+        setMessages(data.messages);
+      } else if (data.type === "delete") {
+        setMessages((prev) => prev.filter((msg) => msg._id !== data.messageId));
+      } else {
+        setMessages((prev) => [...prev, data]);
+      }
     };
 
     websocket.onclose = () => {
@@ -41,7 +47,6 @@ function Chat({ user }) {
       console.error("WebSocket not connected");
     }
   };
-
 
   const sendFile = async (event) => {
     const file = event.target.files[0];
@@ -67,27 +72,60 @@ function Chat({ user }) {
     }
   };
 
+  const deleteMessage = async (id) => {
+    try {
+      const response = await fetch(`http://localhost:3000/delete-message/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text(); // Handle non-JSON errors
+        console.error("Error response:", errorText);
+        alert(`Error: ${errorText}`);
+        return;
+      }
+
+      const data = await response.json();
+      setMessages((prev) => prev.filter((msg) => msg._id !== id));
+    } catch (error) {
+      console.error("Error deleting message:", error);
+    }
+  };
+
+
+
   return (
     <div className="h-screen flex flex-col items-center bg-gray-900 text-white">
       <h2 className="text-3xl font-bold my-4">Chat Room</h2>
       <div className="w-3/4 h-96 bg-gray-800 p-4 overflow-auto rounded">
         {messages.map((msg, index) => (
-          <div key={index} className="mb-2">
-            {msg.type === "message" ? (
-              <strong>{msg.username}: {msg.text}</strong>
-            ) : msg.type === "file" && msg.fileUrl ? (
-              <div>
-                <strong>{msg.username} shared a file: </strong>
-                <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
-                  {msg.fileUrl.split("/").pop()}
-                </a>
+          <div key={index} className="mb-2 flex justify-between items-center">
+            <div>
+              {msg.type === "message" ? (
+                <strong>{msg.username}: {msg.text}</strong>
+              ) : msg.type === "file" && msg.fileUrl ? (
+                <div>
+                  <strong>{msg.username} shared a file: </strong>
+                  <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                    {msg.fileUrl.split("/").pop()}
+                  </a>
+                </div>
+              ) : null}
+            </div>
 
-              </div>
-            ) : null}
+            {msg.username === user.username && (
+              <button
+                onClick={() => deleteMessage(msg._id)}
+                className="ml-4 bg-red-500 px-2 py-1 rounded hover:bg-red-600"
+              >
+                Delete
+              </button>
+            )}
+
           </div>
         ))}
-
       </div>
+
       <div className="mt-4 flex w-3/4 space-x-2">
         <input
           type="text"
@@ -96,7 +134,9 @@ function Chat({ user }) {
           placeholder="Type a message..."
           className="flex-1 p-2 rounded bg-gray-700 text-white"
         />
-        <button onClick={sendMessage} className="bg-blue-500 px-4 py-2 rounded hover:bg-blue-600">Send</button>
+        <button onClick={sendMessage} className="bg-blue-500 px-4 py-2 rounded hover:bg-blue-600">
+          Send
+        </button>
         <input type="file" onChange={sendFile} className="hidden" id="fileUpload" />
         <label htmlFor="fileUpload" className="bg-green-500 px-4 py-2 rounded cursor-pointer hover:bg-green-600">
           Upload File
